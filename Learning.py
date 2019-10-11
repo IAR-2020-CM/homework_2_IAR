@@ -55,23 +55,29 @@ class Learning():
         epsilon_greed = 0.01
 
         discount = 0.9
-        n_it = 1000
-        max_t = 200
+        max_t = 300
 
-        cumulated_reward = torch.zeros((n_it, ))
+        cumulated_reward = torch.zeros((N, ))
 
-        for i in trange(n_it):
+        for i in trange(N):
             s = self.game.reset()
             done = False
             for t in range(max_t):
                 self.optimizer.zero_grad()
                 q = self.mlp(torch.tensor([s], dtype=torch.float))
-                a = q.argmax() if torch.rand((1, )) < epsilon_greed else torch.randint(0, n_a, (1,))
+                # TODO: look if epsilon_greed is stil needed
+                a = (q.argmax()
+                     if torch.rand((1, )) < epsilon_greed
+                     else torch.randint(0, n_a, (1,)))
+
                 s_prime, r, done = self.game.step(a)
-                target = torch.zeros(q.shape) if done else self.mlp(torch.tensor([s_prime],
-                                                 dtype=torch.float)).max()
-                target = r + discount * target
-                loss = F.mse_loss(q, target)
+
+                s_prime = torch.tensor([s_prime], dtype=torch.float)
+                target = (torch.tensor(0, dtype=torch.float)
+                          if done
+                          else self.mlp(s_prime).max() + r)
+
+                loss = F.mse_loss(q[a], target)
                 loss.backward()
                 s = s_prime
                 cumulated_reward[i] += r
@@ -81,9 +87,9 @@ class Learning():
             self.optimizer.step()
 
             # update epsilon
-            epsilon_greed = 0.2 + i / (n_it - 1) * 0.8
+            epsilon_greed = 0.2 + i / (N - 1) * 0.8
 
-            return cumulated_reward
+        return cumulated_reward
 
 
 if __name__ == "__main__":
@@ -93,7 +99,7 @@ if __name__ == "__main__":
     game.add_goal(9, 9)
     learning = Learning(game)
 
-    cumulated_reward_ql = learning.q_learning()
+    cumulated_reward_ql = learning.q_learning(5000)
 
     indices_ql = list(range(len(cumulated_reward_ql)))
     cumulated_reward_ql = [i.item() for i in cumulated_reward_ql]
@@ -101,3 +107,5 @@ if __name__ == "__main__":
     plt.plot(indices_ql, cumulated_reward_ql)
     plt.xlabel("Nombre d'itérations")
     plt.ylabel("Récompense")
+
+    plt.show()
