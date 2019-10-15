@@ -97,7 +97,7 @@ if __name__ == "__main__":
     game.add_goal(4, 4)
     learning = Learning(game, 0.001)
 
-    rewards_ql, losses_ql, episode_len = learning.q_learning(3000)
+    rewards_ql, losses_ql, episode_len = learning.q_learning(10000)
 
     indices_ql = list(range(len(rewards_ql)))
     rewards_ql = [i.item() for i in rewards_ql.cumsum(0)]
