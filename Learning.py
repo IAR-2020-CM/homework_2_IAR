@@ -38,23 +38,7 @@ class Learning():
                                          lr=learning_rate)
 
 
-    #def monte_carlo(self, batch_size=32, N=1000):
-
-    #    for i in range(N):
-    #        data = gen_episode(self.game)
-    #        label = torch.full(data.shape, -1)
-    #        label[-1] = 9
-    #        dataset = torch.utils.data.TensorDataset(data, label)
-
-    #        loader = torch.utils.data.DataLoader(dataset,
-    #                                             shuffle=True,
-    #                                             batch_size=batch_size)
-    #        total_loss = 0
-    #        for i, (state, action) in enumerate(loader):
-    #            out = mlp(state)
-
-
-    def q_learning(self, N=1000, batch_size=32):
+    def q_learning(self, N=1000):
 
         n_a = self.game.action_space_size
         n_s = self.game.state_space_size
@@ -63,7 +47,9 @@ class Learning():
         discount = 0.9
         max_t = 300
 
-        cumulated_reward = torch.zeros((N, ))
+        rewards = torch.zeros((N, ))
+        losses = torch.zeros((N, ))
+        episode_duration = []
 
         for i in trange(N):
             s = torch.tensor(self.game.reset(), dtype=torch.float).unsqueeze(0)
@@ -80,14 +66,16 @@ class Learning():
                 s_prime = torch.tensor(s_prime, dtype=torch.float).unsqueeze(0)
                 target = (torch.tensor(0, dtype=torch.float)
                           if done
-                          else self.target_mlp(s_prime).max() + r)
+                          else discount * self.target_mlp(s_prime).max() + r)
                 target = target.unsqueeze(0)
                 loss = F.mse_loss(q[a].unsqueeze(0), target)
+                losses[i] = loss
                 loss.backward()
                 s = s_prime
-                cumulated_reward[i] += r
+                rewards[i] += r
                 self.optimizer.step()
                 if done:
+                    episode_duration.append(t)
                     break
 
             if i % self.freeze_period == self.freeze_period - 1:
@@ -97,25 +85,32 @@ class Learning():
 
 
             # update epsilon
-            epsilon_greed = 0.2 + i / (N - 1) * 0.8
+            epsilon_greed = 0.2 + i / (N - 1) * 0.7
 
-        return cumulated_reward
+        return rewards, losses, episode_duration
 
 
 if __name__ == "__main__":
 
-    game = GridWorld()
+    game = GridWorld(width=4, height=4)
     game.add_start(1, 1)
-    game.add_goal(9, 9)
-    learning = Learning(game)
+    game.add_goal(4, 4)
+    learning = Learning(game, 0.001)
 
-    cumulated_reward_ql = learning.q_learning(500)
+    rewards_ql, losses_ql, episode_len = learning.q_learning(3000)
 
-    indices_ql = list(range(len(cumulated_reward_ql)))
-    cumulated_reward_ql = [i.item() for i in cumulated_reward_ql]
-    plt.figure(2)
-    plt.plot(indices_ql, cumulated_reward_ql)
+    indices_ql = list(range(len(rewards_ql)))
+    rewards_ql = [i.item() for i in rewards_ql.cumsum(0)]
+    plt.figure(0)
+    plt.plot(indices_ql, rewards_ql)
     plt.xlabel("Nombre d'itérations")
-    plt.ylabel("Récompense")
+    plt.ylabel("Récompense cumulée")
+
+    indices_ql = list(range(len(losses_ql)))
+    losses_ql = [i.item() for i in losses_ql.cumsum(0)]
+    plt.figure(1)
+    plt.plot(indices_ql, losses_ql)
+    plt.xlabel("Nombre d'itérations")
+    plt.ylabel("Erreur cumulée")
 
     plt.show()
