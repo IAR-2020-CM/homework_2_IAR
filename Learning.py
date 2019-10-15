@@ -71,11 +71,9 @@ class Learning():
             for t in range(max_t):
                 self.optimizer.zero_grad()
                 q = self.mlp(s)
-                # TODO: look if epsilon_greed is stil needed
-                breakpoint()
-                a = (q.argmax(1).item()
-                     if torch.rand((1, )).item() < epsilon_greed
-                     else torch.randint(0, n_a, (1,)).item())
+                a = (q.argmax(0)
+                     if torch.rand((1, )) < epsilon_greed
+                     else torch.randint(0, n_a, ()))
 
                 s_prime, r, done = self.game.step(a)
 
