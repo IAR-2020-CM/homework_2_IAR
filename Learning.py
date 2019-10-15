@@ -24,12 +24,18 @@ def e_greedy(game, episode, policy, Q, epsilon=0.3):
 
 class Learning():
 
-    def __init__(self, game: GridWorld, learning_rate=0.01):
+    def __init__(self, game: GridWorld, learning_rate=0.01, freeze_period=20):
 
         self.game = game
 
+        self.freeze_period = freeze_period
+
         self.mlp = MLP()
-        self.optimizer = torch.optim.SGD(self.mlp.parameters(), lr=learning_rate)
+        self.target_mlp = MLP()
+        self.target_mlp.load_state_dict(self.mlp.state_dict())
+
+        self.optimizer = torch.optim.SGD(self.mlp.parameters(),
+                                         lr=learning_rate)
 
 
     #def monte_carlo(self, batch_size=32, N=1000):
@@ -60,31 +66,37 @@ class Learning():
         cumulated_reward = torch.zeros((N, ))
 
         for i in trange(N):
-            s = self.game.reset()
+            s = torch.tensor(self.game.reset(), dtype=torch.float).unsqueeze(0)
             done = False
             for t in range(max_t):
                 self.optimizer.zero_grad()
-                q = self.mlp(torch.tensor([s], dtype=torch.float))
+                q = self.mlp(s)
                 # TODO: look if epsilon_greed is stil needed
-                a = (q.argmax()
-                     if torch.rand((1, )) < epsilon_greed
-                     else torch.randint(0, n_a, (1,)))
+                breakpoint()
+                a = (q.argmax(1).item()
+                     if torch.rand((1, )).item() < epsilon_greed
+                     else torch.randint(0, n_a, (1,)).item())
 
                 s_prime, r, done = self.game.step(a)
 
-                s_prime = torch.tensor([s_prime], dtype=torch.float)
+                s_prime = torch.tensor(s_prime, dtype=torch.float).unsqueeze(0)
                 target = (torch.tensor(0, dtype=torch.float)
                           if done
-                          else self.mlp(s_prime).max() + r)
-
-                loss = F.mse_loss(q[a], target)
+                          else self.target_mlp(s_prime).max() + r)
+                target = target.unsqueeze(0)
+                loss = F.mse_loss(q[a].unsqueeze(0), target)
                 loss.backward()
                 s = s_prime
                 cumulated_reward[i] += r
+                self.optimizer.step()
                 if done:
                     break
 
-            self.optimizer.step()
+            if i % self.freeze_period == self.freeze_period - 1:
+                temp_state_dict = self.target_mlp.state_dict()
+                self.target_mlp.load_state_dict(self.mlp.state_dict())
+                self.mlp.load_state_dict(temp_state_dict)
+
 
             # update epsilon
             epsilon_greed = 0.2 + i / (N - 1) * 0.8
@@ -99,7 +111,7 @@ if __name__ == "__main__":
     game.add_goal(9, 9)
     learning = Learning(game)
 
-    cumulated_reward_ql = learning.q_learning(5000)
+    cumulated_reward_ql = learning.q_learning(500)
 
     indices_ql = list(range(len(cumulated_reward_ql)))
     cumulated_reward_ql = [i.item() for i in cumulated_reward_ql]
